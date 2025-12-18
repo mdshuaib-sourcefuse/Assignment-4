@@ -4,6 +4,28 @@ enum Roles {
   SUBSCRIBER = "Subscriber",
 }
 
+function DateTimeFormatter() {
+  return function (target: any, propertyKey: string) {
+    const privateKey = Symbol(propertyKey);
+
+    Object.defineProperty(target, propertyKey, {
+      get() {
+        const value: Date = this[privateKey];
+        if (!value) return "";
+        return (
+          value.toLocaleDateString("en-IN") +
+          " " +
+          value.toLocaleTimeString("en-IN")
+        );
+      },
+      set(newVal: Date) {
+        this[privateKey] = newVal;
+      },
+      enumerable: true,
+      configurable: true,
+    });
+  };
+}
 
 
 class User {
