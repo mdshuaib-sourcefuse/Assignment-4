@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "module": "none",
+    "target": "es5",
+    "lib": ["es2017", "dom"],
+
+    "useDefineForClassFields": false,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": false,
+
+    "sourceMap": true,
+    "declaration": true,
+    "declarationMap": true,
+
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "strict": true,
+
+    
+    
+
+    "skipLibCheck": true
+  }
+}
