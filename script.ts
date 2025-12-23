@@ -271,3 +271,4 @@ document.addEventListener("DOMContentLoaded", () => {
 
   (window as any).table = new UserTable(store);
 });
+
