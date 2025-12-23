@@ -12,10 +12,11 @@ var Roles;
     Roles["SUBSCRIBER"] = "Subscriber";
 })(Roles || (Roles = {}));
 function DateTimeFormatter() {
+    var store = new WeakMap();
     return function (target, propertyKey) {
-        var value;
         Object.defineProperty(target, propertyKey, {
             get: function () {
+                var value = store.get(this);
                 if (!value)
                     return "";
                 return (value.toLocaleDateString("en-IN") +
@@ -23,7 +24,7 @@ function DateTimeFormatter() {
                     value.toLocaleTimeString("en-IN"));
             },
             set: function (newVal) {
-                value = newVal;
+                store.set(this, newVal);
             },
             enumerable: true,
             configurable: true,
@@ -64,46 +65,38 @@ function validateUser(user) {
         errors.push("First name is required");
     if (!user.last.trim())
         errors.push("Last name is required");
-    if (user.email.indexOf("@") === -1)
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(user.email))
         errors.push("Invalid email");
-    if (user.phone.length !== 10)
-        errors.push("Phone must be 10 digits");
+    if (!/^\d{10,15}$/.test(user.phone))
+        errors.push("Invalid phone number");
     if (!user.address.trim())
         errors.push("Address is required");
     return errors;
 }
 var GenericStore = /** @class */ (function () {
-    function GenericStore(data) {
-        var _this = this;
-        this.items = data.map(function (d) { return _this.clone(d); });
-        this.original = data.map(function (d) { return _this.clone(d); });
+    function GenericStore(data, cloneFn) {
+        this.cloneFn = cloneFn;
+        this.items = data.map(this.cloneFn);
+        this.original = data.map(this.cloneFn);
     }
-    GenericStore.prototype.clone = function (obj) {
-        if (obj instanceof User)
-            return obj;
-        return new User(obj.first, obj.middle, obj.last, obj.email, obj.phone, obj.role, obj.address, obj.createdAt ? new Date(obj.createdAt) : new Date(), obj.editing);
-    };
     GenericStore.prototype.getAll = function () {
         return this.items;
     };
     GenericStore.prototype.add = function (item) {
-        this.items.push(this.clone(item));
+        this.items.push(this.cloneFn(item));
     };
     GenericStore.prototype.update = function (index, item) {
-        this.items[index] = this.clone(item);
+        this.items[index] = this.cloneFn(item);
     };
     GenericStore.prototype.delete = function (index) {
         this.items.splice(index, 1);
     };
     GenericStore.prototype.reset = function () {
-        var _this = this;
-        this.items = this.original.map(function (d) { return _this.clone(d); });
+        this.items = this.original.map(this.cloneFn);
     };
     GenericStore.prototype.setEditing = function (index, value) {
-        var item = this.items[index];
-        if (!item)
-            return;
-        item.editing = value;
+        if (this.items[index])
+            this.items[index].editing = value;
     };
     return GenericStore;
 }());
@@ -116,49 +109,49 @@ var UserTable = /** @class */ (function () {
         this.addBtn = document.getElementById("addUserBtn");
         this.isLoaded = false;
         this.loadBtn.addEventListener("click", function () {
-            document.getElementById("userTable").style.display = "table";
-            if (!_this.isLoaded) {
-                _this.render();
-                _this.isLoaded = true;
+            try {
+                document.getElementById("userTable").style.display = "table";
+                _this.isLoaded ? _this.store.reset() : (_this.isLoaded = true);
                 _this.loadBtn.innerText = "Refresh Data";
-            }
-            else {
-                _this.store.reset();
                 _this.render();
+            }
+            catch (e) {
+                alert("Error while loading data");
             }
         });
         this.addBtn.addEventListener("click", function () { return _this.addUser(); });
     }
     UserTable.prototype.input = function (row, index) {
-        if (!row)
-            return "";
-        var cell = row.cells[index];
-        if (!cell)
-            return "";
-        var el = cell.querySelector("input, select");
-        return el ? el.value : "";
+        var _a, _b;
+        var el = (_a = row === null || row === void 0 ? void 0 : row.cells[index]) === null || _a === void 0 ? void 0 : _a.querySelector("input, select");
+        return (_b = el === null || el === void 0 ? void 0 : el.value) !== null && _b !== void 0 ? _b : "";
     };
     UserTable.prototype.addUser = function () {
-        var user = new User("", "", "", "", "", Roles.SUBSCRIBER, "", new Date(), true);
-        this.store.add(user);
-        this.render();
+        try {
+            this.store.add(new User("", "", "", "", "", Roles.SUBSCRIBER, "", new Date(), true));
+            this.render();
+        }
+        catch (_a) {
+            alert("Error while adding user");
+        }
     };
     UserTable.prototype.save = function (index) {
-        var row = this.tableBody.rows.item(index);
-        if (!row)
-            return;
-        var oldUser = this.store.getAll()[index];
-        if (!oldUser)
-            return;
-        var user = new User(this.input(row, 0), this.input(row, 1), this.input(row, 2), this.input(row, 3), this.input(row, 4), this.input(row, 5), this.input(row, 6), oldUser.getRawCreatedAt());
-        var errors = validateUser(user);
-        if (errors.length) {
-            alert(errors.join("\n"));
-            return;
+        try {
+            var row = this.tableBody.rows.item(index);
+            var old = this.store.getAll()[index];
+            if (!row || !old)
+                return;
+            var user = new User(this.input(row, 0), this.input(row, 1), this.input(row, 2), this.input(row, 3), this.input(row, 4), this.input(row, 5), this.input(row, 6), old.getRawCreatedAt());
+            var errors = validateUser(user);
+            if (errors.length)
+                return alert(errors.join("\n"));
+            user.editing = false;
+            this.store.update(index, user);
+            this.render();
         }
-        user.editing = false;
-        this.store.update(index, user);
-        this.render();
+        catch (_a) {
+            alert("Error while saving user");
+        }
     };
     UserTable.prototype.edit = function (index) {
         this.store.setEditing(index, true);
@@ -169,22 +162,34 @@ var UserTable = /** @class */ (function () {
         this.render();
     };
     UserTable.prototype.remove = function (index) {
-        this.store.delete(index);
-        this.render();
+        try {
+            this.store.delete(index);
+            this.render();
+        }
+        catch (_a) {
+            alert("Error while deleting user");
+        }
     };
     UserTable.prototype.render = function () {
-        var _this = this;
-        this.tableBody.innerHTML = "";
-        this.store.getAll().forEach(function (u, i) {
-            _this.tableBody.innerHTML += u.editing
-                ? "\n        <tr>\n          <td><input value=\"".concat(u.first, "\"></td>\n          <td><input value=\"").concat(u.middle, "\"></td>\n          <td><input value=\"").concat(u.last, "\"></td>\n          <td><input value=\"").concat(u.email, "\"></td>\n          <td><input value=\"").concat(u.phone, "\"></td>\n          <td>\n            <select>\n              <option ").concat(u.role === Roles.SUPERADMIN ? "selected" : "", ">SuperAdmin</option>\n              <option ").concat(u.role === Roles.ADMIN ? "selected" : "", ">Admin</option>\n              <option ").concat(u.role === Roles.SUBSCRIBER ? "selected" : "", ">Subscriber</option>\n            </select>\n          </td>\n          <td><input value=\"").concat(u.address, "\"></td>\n          <td>").concat(u.createdAt, "</td>\n          <td>\n            <button onclick=\"table.save(").concat(i, ")\">Save</button>\n            <button onclick=\"table.cancel()\">Cancel</button>\n          </td>\n        </tr>")
-                : "\n        <tr>\n          <td>".concat(u.first, "</td>\n          <td>").concat(u.middle, "</td>\n          <td>").concat(u.last, "</td>\n          <td>").concat(u.email, "</td>\n          <td>").concat(u.phone, "</td>\n          <td>").concat(u.role, "</td>\n          <td>").concat(u.address, "</td>\n          <td>").concat(u.createdAt, "</td>\n          <td>\n            <button onclick=\"table.edit(").concat(i, ")\">Edit</button>\n            <button onclick=\"table.remove(").concat(i, ")\">Delete</button>\n          </td>\n        </tr>");
-        });
+        try {
+            var users = this.store.getAll();
+            this.tableBody.innerHTML = users
+                .map(function (u, i) {
+                return u.editing
+                    ? "<tr>\n                <td><input value=\"".concat(u.first, "\"></td>\n                <td><input value=\"").concat(u.middle, "\"></td>\n                <td><input value=\"").concat(u.last, "\"></td>\n                <td><input value=\"").concat(u.email, "\"></td>\n                <td><input value=\"").concat(u.phone, "\"></td>\n                <td>\n                  <select>\n                    <option ").concat(u.role === Roles.SUPERADMIN ? "selected" : "", ">SuperAdmin</option>\n                    <option ").concat(u.role === Roles.ADMIN ? "selected" : "", ">Admin</option>\n                    <option ").concat(u.role === Roles.SUBSCRIBER ? "selected" : "", ">Subscriber</option>\n                  </select>\n                </td>\n                <td><input value=\"").concat(u.address, "\"></td>\n                <td>").concat(u.createdAt, "</td>\n                <td>\n                  <button onclick=\"table.save(").concat(i, ")\">Save</button>\n                  <button onclick=\"table.cancel()\">Cancel</button>\n                </td>\n              </tr>")
+                    : "<tr>\n                <td>".concat(u.first, "</td>\n                <td>").concat(u.middle, "</td>\n                <td>").concat(u.last, "</td>\n                <td>").concat(u.email, "</td>\n                <td>").concat(u.phone, "</td>\n                <td>").concat(u.role, "</td>\n                <td>").concat(u.address, "</td>\n                <td>").concat(u.createdAt, "</td>\n                <td>\n                  <button onclick=\"table.edit(").concat(i, ")\">Edit</button>\n                  <button onclick=\"table.remove(").concat(i, ")\">Delete</button>\n                </td>\n              </tr>");
+            })
+                .join("");
+        }
+        catch (_a) {
+            alert("Render error");
+        }
     };
     return UserTable;
 }());
 document.addEventListener("DOMContentLoaded", function () {
-    var store = new GenericStore(userData);
+    var store = new GenericStore(userData, function (u) {
+        return new User(u.first, u.middle, u.last, u.email, u.phone, u.role, u.address, u.getRawCreatedAt(), u.editing);
+    });
     window.table = new UserTable(store);
 });
-//# sourceMappingURL=script.js.map
