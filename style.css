@@ -69,3 +69,9 @@ button:last-child {
   background-color: #e74c3c;
   color: white;
 }
+
+#addUserBtn {
+  background-color: black;
+  margin-bottom: 30px;
+  color: white;
+}

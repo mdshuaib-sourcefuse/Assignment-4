@@ -4,33 +4,34 @@
 <head>
   <meta charset="utf-8" />
   <title>Assignment-4</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
 
-  <h1>User Table Enum Curd </h1>
+  <h1>User Enum CRUD Table</h1>
 
   <button id="loadBtn">Load Data</button>
+  <button id="addUserBtn">Add User</button>
 
-  <table id="userTable" style="display:none;">
+  <table id="userTable" border="1" style="display:none;">
     <thead>
       <tr>
-        <th>First Name</th>
-        <th>Middle Name</th>
-        <th>Last Name</th>
+        <th>First</th>
+        <th>Middle</th>
+        <th>Last</th>
         <th>Email</th>
         <th>Phone</th>
         <th>Role</th>
         <th>Address</th>
-        <th>Date and 
-            Time    
-        </th>
+        <th>Date & Time</th>
         <th>Actions</th>
       </tr>
     </thead>
+
     <tbody id="tableBody"></tbody>
   </table>
+
 
   <script src="script.js"></script>
 </body>
