@@ -4,10 +4,32 @@ enum Roles {
   SUBSCRIBER = "Subscriber",
 }
 
+function DateTimeFormatter() {
+  const store = new WeakMap<object, Date>();
 
+  return function (target: any, propertyKey: string) {
+    Object.defineProperty(target, propertyKey, {
+      get() {
+        const value = store.get(this);
+        if (!value) return "";
+        return (
+          value.toLocaleDateString("en-IN") +
+          " " +
+          value.toLocaleTimeString("en-IN")
+        );
+      },
+      set(newVal: Date) {
+        store.set(this, newVal);
+      },
+      enumerable: true,
+      configurable: true,
+    });
+  };
+}
 
 class User {
-  private _rawCreatedAt!: Date;
+  private _rawCreatedAt: Date;
+
   @DateTimeFormatter()
   public createdAt!: Date;
 
@@ -22,284 +44,230 @@ class User {
     createdAt: Date = new Date(),
     public editing: boolean = false
   ) {
-    (this.createdAt = createdAt), (this._rawCreatedAt = createdAt);
+    this._rawCreatedAt = createdAt;
+    this.createdAt = createdAt;
   }
+
   getRawCreatedAt(): Date {
     return this._rawCreatedAt;
   }
 }
 
 const userData: User[] = [
-  new User(
-    "Amit",
-    "K",
-    "Sharma",
-    "amit@gmail.com",
-    "9876543210",
-    Roles.SUPERADMIN,
-    "Delhi"
-  ),
-  new User(
-    "Rahul",
-    "P",
-    "Verma",
-    "rahul@gmail.com",
-    "9988776655",
-    Roles.ADMIN,
-    "Mumbai"
-  ),
-  new User(
-    "Sana",
-    "N",
-    "Khan",
-    "sana@gmail.com",
-    "8877665544",
-    Roles.SUBSCRIBER,
-    "Kolkata"
-  ),
+  new User("Amit", "K", "Sharma", "amit@gmail.com", "9876543210", Roles.SUPERADMIN, "Delhi"),
+  new User("Rahul", "P", "Verma", "rahul@gmail.com", "9988776655", Roles.ADMIN, "Mumbai"),
+  new User("Sana", "N", "Khan", "sana@gmail.com", "8877665544", Roles.SUBSCRIBER, "Kolkata"),
 ];
 
 function validateUser(user: User): string[] {
   const errors: string[] = [];
+
   if (!user.first.trim()) errors.push("First name is required");
   if (!user.last.trim()) errors.push("Last name is required");
-  if (!user.email || user.email.indexOf("@") === -1)
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(user.email))
     errors.push("Invalid email");
-  if (!user.phone || user.phone.length !== 10)
-    errors.push("Phone must be 10 digits");
+
+  if (!/^\d{10,15}$/.test(user.phone))
+    errors.push("Invalid phone number");
+
   if (!user.address.trim()) errors.push("Address is required");
+
   return errors;
+}
+
+interface IUserCRUD {
+  addUser(): void;
+  save(index: number): void;
+  edit(index: number): void;
+  cancel(): void;
+  remove(index: number): void;
+  render(): void;
 }
 
 class GenericStore<T extends { editing: boolean }> {
   private items: T[];
   private original: T[];
 
-  constructor(data: T[]) {
-    this.original = data.map((d) => this.revive(d));
-    this.items = data.map((d) => this.revive(d));
-  }
-
-  private revive(obj: any): T {
-    if (obj instanceof User) return obj as unknown as T;
-
-    return new User(
-      obj.first,
-      obj.middle,
-      obj.last,
-      obj.email,
-      obj.phone,
-      obj.role,
-      obj.address,
-      obj.createdAt ? new Date(obj.createdAt) : new Date(),
-      obj.editing
-    ) as unknown as T;
+  constructor(data: T[], private cloneFn: (obj: T) => T) {
+    this.items = data.map(this.cloneFn);
+    this.original = data.map(this.cloneFn);
   }
 
   getAll(): T[] {
     return this.items;
   }
 
-  reset(): void {
-    this.items = this.original.map((d) => this.revive(d));
+  add(item: T): void {
+    this.items.push(this.cloneFn(item));
+  }
+
+  update(index: number, item: T): void {
+    this.items[index] = this.cloneFn(item);
   }
 
   delete(index: number): void {
     this.items.splice(index, 1);
   }
 
+  reset(): void {
+    this.items = this.original.map(this.cloneFn);
+  }
+
   setEditing(index: number, value: boolean): void {
-    const item = this.items[index];
-    if (!item) return;
-    item.editing = value;
+    if (this.items[index]) this.items[index].editing = value;
   }
-
-  update(index: number, item: T): void {
-    this.items[index] = this.revive(item);
-  }
-}
-
-interface IUserCRUD {
-  loadData(): void;
-  refreshData(): void;
-  deleteUser(index: number): void;
-  editUser(index: number): void;
-  saveUser(index: number): void;
-  cancelEdit(index: number): void;
 }
 
 class UserTable implements IUserCRUD {
-  private tableBody = document.getElementById(
-    "tableBody"
-  ) as HTMLTableSectionElement;
+  private tableBody = document.getElementById("tableBody") as HTMLTableSectionElement;
   private loadBtn = document.getElementById("loadBtn") as HTMLButtonElement;
+  private addBtn = document.getElementById("addUserBtn") as HTMLButtonElement;
   private isLoaded = false;
 
   constructor(private store: GenericStore<User>) {
     this.loadBtn.addEventListener("click", () => {
-      if (!this.isLoaded) {
-        this.loadData();
-
-        this.isLoaded = true;
-
+      try {
+        document.getElementById("userTable")!.style.display = "table";
+        this.isLoaded ? this.store.reset() : (this.isLoaded = true);
         this.loadBtn.innerText = "Refresh Data";
-      } else {
-        this.refreshData();
+        this.render();
+      } catch (e) {
+        alert("Error while loading data");
       }
     });
+
+    this.addBtn.addEventListener("click", () => this.addUser());
   }
 
-  private getInputValue(row: HTMLTableRowElement, cellIndex: number): string {
-    const cell = row.cells.item(cellIndex);
-    if (!cell) return "";
-
-    const input = cell.querySelector("input, select") as
+  private input(row: HTMLTableRowElement | null, index: number): string {
+    const el = row?.cells[index]?.querySelector("input, select") as
       | HTMLInputElement
       | HTMLSelectElement
       | null;
-
-    return input ? input.value : "";
+    return el?.value ?? "";
   }
 
-  loadData(): void {
-    document.getElementById("userTable")!.style.display = "table";
-    this.renderTable();
-  }
-
-  refreshData(): void {
-    this.store.reset();
-    this.renderTable();
-  }
-
-  deleteUser(index: number): void {
-    this.store.delete(index);
-    this.renderTable();
-  }
-
-  editUser(index: number): void {
-    this.store.setEditing(index, true);
-    this.renderTable();
-  }
-
-  saveUser(index: number): void {
-    const row = this.tableBody.rows.item(index);
-    if (!row) return;
-    if (row.cells.length < 7) return;
-
-    const oldUser = this.store.getAll()[index];
-    if (!oldUser) return;
-
-    const updatedUser = new User(
-      this.getInputValue(row, 0),
-      this.getInputValue(row, 1),
-      this.getInputValue(row, 2),
-      this.getInputValue(row, 3),
-      this.getInputValue(row, 4),
-      this.getInputValue(row, 5) as Roles,
-      this.getInputValue(row, 6)
-    );
-
-    updatedUser.createdAt = oldUser.getRawCreatedAt();
-
-    const errors = validateUser(updatedUser);
-    if (errors.length) {
-      alert(errors.join("\n"));
-      return;
+  addUser(): void {
+    try {
+      this.store.add(new User("", "", "", "", "", Roles.SUBSCRIBER, "", new Date(), true));
+      this.render();
+    } catch {
+      alert("Error while adding user");
     }
-
-    updatedUser.editing = false;
-    this.store.update(index, updatedUser);
-    this.renderTable();
   }
 
-  cancelEdit(index: number): void {
-    this.store.setEditing(index, false);
-    this.renderTable();
+  save(index: number): void {
+    try {
+      const row = this.tableBody.rows.item(index);
+      const old = this.store.getAll()[index];
+      if (!row || !old) return;
+
+      const user = new User(
+        this.input(row, 0),
+        this.input(row, 1),
+        this.input(row, 2),
+        this.input(row, 3),
+        this.input(row, 4),
+        this.input(row, 5) as Roles,
+        this.input(row, 6),
+        old.getRawCreatedAt()
+      );
+
+      const errors = validateUser(user);
+      if (errors.length) return alert(errors.join("\n"));
+
+      user.editing = false;
+      this.store.update(index, user);
+      this.render();
+    } catch {
+      alert("Error while saving user");
+    }
   }
 
-  private renderTable(): void {
-    this.tableBody.innerHTML = "";
-
-    this.store.getAll().forEach((user, index) => {
-      const row = user.editing
-        ? `
-          <tr>
-            <td><input value="${user.first}"></td>
-            <td><input value="${user.middle}"></td>
-            <td><input value="${user.last}"></td>
-            <td><input value="${user.email}"></td>
-            <td><input value="${user.phone}"></td>
-            <td>
-              <select>
-                <option ${
-                  user.role === Roles.SUPERADMIN ? "selected" : ""
-                }>SuperAdmin</option>
-                <option ${
-                  user.role === Roles.ADMIN ? "selected" : ""
-                }>Admin</option>
-                <option ${
-                  user.role === Roles.SUBSCRIBER ? "selected" : ""
-                }>Subscriber</option>
-              </select>
-            </td>
-            <td><input value="${user.address}"></td>
-            <td>${user.createdAt}</td>
-            <td>
-             <button class="save-btn" data-index="${index}">Save</button>
-             <button class="cancel-btn" data-index="${index}">Cancel</button>
-            </td>
-          </tr>`
-        : `
-          <tr>
-            <td>${user.first}</td>
-            <td>${user.middle}</td>
-            <td>${user.last}</td>
-            <td>${user.email}</td>
-            <td>${user.phone}</td>
-            <td>${user.role}</td>
-            <td>${user.address}</td>
-            <td>${user.createdAt}</td>
-            <td>
-            <button class="edit-btn" data-index="${index}">Edit</button>
-            <button class="delete-btn" data-index="${index}">Delete</button>
-            </td>
-          </tr>`;
-
-      this.tableBody.innerHTML += row;
-    });
-    this.attachEvents();
+  edit(index: number): void {
+    this.store.setEditing(index, true);
+    this.render();
   }
 
-  private attachEvents(): void {
-    this.tableBody.querySelectorAll(".save-btn").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        const index = Number((e.currentTarget as HTMLElement).dataset.index);
-        this.saveUser(index);
-      });
-    });
-    this.tableBody.querySelectorAll(".cancel-btn").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        const index = Number((e.currentTarget as HTMLElement).dataset.index);
-        this.cancelEdit(index);
-      });
-    });
-    this.tableBody.querySelectorAll(".edit-btn").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        const index = Number((e.currentTarget as HTMLElement).dataset.index);
-        this.editUser(index);
-      });
-    });
-    this.tableBody.querySelectorAll(".delete-btn").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        const index = Number((e.currentTarget as HTMLElement).dataset.index);
-        this.deleteUser(index);
-      });
-    });
+  cancel(): void {
+    this.store.reset();
+    this.render();
+  }
+
+  remove(index: number): void {
+    try {
+      this.store.delete(index);
+      this.render();
+    } catch {
+      alert("Error while deleting user");
+    }
+  }
+
+  render(): void {
+    try {
+      const users = this.store.getAll();
+      this.tableBody.innerHTML = users
+        .map((u, i) =>
+          u.editing
+            ? `<tr>
+                <td><input value="${u.first}"></td>
+                <td><input value="${u.middle}"></td>
+                <td><input value="${u.last}"></td>
+                <td><input value="${u.email}"></td>
+                <td><input value="${u.phone}"></td>
+                <td>
+                  <select>
+                    <option ${u.role === Roles.SUPERADMIN ? "selected" : ""}>SuperAdmin</option>
+                    <option ${u.role === Roles.ADMIN ? "selected" : ""}>Admin</option>
+                    <option ${u.role === Roles.SUBSCRIBER ? "selected" : ""}>Subscriber</option>
+                  </select>
+                </td>
+                <td><input value="${u.address}"></td>
+                <td>${u.createdAt}</td>
+                <td>
+                  <button onclick="table.save(${i})">Save</button>
+                  <button onclick="table.cancel()">Cancel</button>
+                </td>
+              </tr>`
+            : `<tr>
+                <td>${u.first}</td>
+                <td>${u.middle}</td>
+                <td>${u.last}</td>
+                <td>${u.email}</td>
+                <td>${u.phone}</td>
+                <td>${u.role}</td>
+                <td>${u.address}</td>
+                <td>${u.createdAt}</td>
+                <td>
+                  <button onclick="table.edit(${i})">Edit</button>
+                  <button onclick="table.remove(${i})">Delete</button>
+                </td>
+              </tr>`
+        )
+        .join("");
+    } catch {
+      alert("Render error");
+    }
   }
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  const store = new GenericStore<User>(userData);
-  const table = new UserTable(store);
-  (window as any).table = table;
+  const store = new GenericStore<User>(
+    userData,
+    (u) =>
+      new User(
+        u.first,
+        u.middle,
+        u.last,
+        u.email,
+        u.phone,
+        u.role,
+        u.address,
+        u.getRawCreatedAt(),
+        u.editing
+      )
+  );
+
+  (window as any).table = new UserTable(store);
 });
